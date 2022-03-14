@@ -1,0 +1,1397 @@
+---
+title: Tracking the source of heavy metal pollution in Lake Zurich (Switzerland) --
+  Analyses Report
+knit: (function(input_file, encoding) {
+  out_dir <- 'docs';
+  rmarkdown::render(input_file,
+ encoding=encoding,
+ output_file=file.path(dirname(input_file), out_dir, 'index.html'))})
+author: "Remo L. Roethlin"
+date: "Last compiled on `r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    code_folding: hide
+    df_print: paged
+    toc: true
+    toc_float: true
+---
+
+This document is an effort to make analyses that were carried out for the study "Tracking the legacy of early industrial activity in sediments of Lake Zurich, Switzerland: Using a novel multi-proxy approach to find the source of extensive heavy metal pollution" (to be published) reproducible.
+
+This document reflects the data analyses used for the accepted version of the research article, published at PUBLISHER on ACCEPTANCE DATE with the identifier:
+
+The identifier of this dataset and code is:
+
+[![DOI:10.25678/0005Y5](https://zenodo.org/badge/DOI/10.25678/0005Y5.svg)](https://doi.org/10.25678/0005Y5)
+
+```{r init:packages, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+
+library(tidyverse)
+library(lubridate)
+library(ggfortify)
+library(broom)
+library(jpeg)
+library(renv)
+library(scales)
+library(ggh4x)
+library(viridis)
+library(pander)
+library(corrplot)
+library(patchwork)
+library(grid)
+library(tidypredict)
+
+source("R/avaatech_xrf_corescanner.R", local = knitr::knit_global())
+```
+
+R session info:
+
+```{r init:session_info}
+sessionInfo()
+```
+
+In a first step, we're reading all the raw data (see README.md for an explanation of the files).
+
+```{r data:read_files}
+# TODO: Add explicit column specification for reader functions
+hg_afs_data_20170320 <-
+  read_delim(
+    "data/raw/hg_afs/20170320_hg_afs_total_digestions_richterswil.txt",
+    delim = "\t",
+    trim_ws = TRUE,
+    col_types = cols(
+      Pos = col_double(),
+      Runs = col_double(),
+      Type = col_character(),
+      Name = col_character(),
+      ID = col_character(),
+      Conc = col_double(),
+      `Pk Ht` = col_double(),
+      `Pk Area` = col_double(),
+      Baseline = col_double(),
+      Message = col_character(),
+      Flag = col_logical(),
+      Slope = col_double(),
+      Intercept = col_double(),
+      `Mass(g) / Min` = col_character(),
+      `Vol(ml) / Max` = col_character(),
+      `Dilution Factor` = col_character(),
+      SD = col_character(),
+      RSD = col_character(),
+      Cal = col_character(),
+      Method = col_character(),
+      `Date/Time` = col_character(),
+      `Mass 2 (g)` = col_character(),
+      `Volume 2 (ml)` = col_character(),
+      Unit = col_character()
+    )
+  )
+
+hg_afs_data_20170322 <-
+  read_delim(
+    "data/raw/hg_afs/20170322_hg_afs_total_digestions_richterswil.txt",
+    delim = "\t",
+    trim_ws = TRUE,
+    col_types = cols(
+      Pos = col_double(),
+      Runs = col_double(),
+      Type = col_character(),
+      Name = col_character(),
+      ID = col_character(),
+      Conc = col_double(),
+      `Pk Ht` = col_double(),
+      `Pk Area` = col_double(),
+      Baseline = col_double(),
+      Message = col_character(),
+      Flag = col_logical(),
+      Slope = col_double(),
+      Intercept = col_double(),
+      `Mass(g) / Min` = col_character(),
+      `Vol(ml) / Max` = col_character(),
+      `Dilution Factor` = col_character(),
+      SD = col_character(),
+      RSD = col_character(),
+      Cal = col_character(),
+      Method = col_character(),
+      `Date/Time` = col_character(),
+      `Mass 2 (g)` = col_character(),
+      `Volume 2 (ml)` = col_character(),
+      Unit = col_character()
+    )
+  )
+
+hg_afs_data_sequential <-
+  read_csv(
+    "data/raw/hg_afs/20170518_hg_afs_sequential_digestions_richterswil.csv",
+    col_types = cols(
+      Pos = col_double(),
+      Runs = col_double(),
+      Type = col_character(),
+      Name = col_character(),
+      ID = col_character(),
+      Conc = col_double(),
+      `Pk Ht` = col_double(),
+      `Pk Area` = col_double(),
+      Baseline = col_double(),
+      Message = col_character(),
+      Flag = col_logical(),
+      Slope = col_double(),
+      Intercept = col_double(),
+      `Mass(g) / Min` = col_character(),
+      `Vol(ml) / Max` = col_character(),
+      `Dilution Factor` = col_character(),
+      SD = col_character(),
+      RSD = col_character(),
+      Cal = col_character(),
+      Method = col_character(),
+      `Date/Time` = col_character(),
+      `Mass 2 (g)` = col_character(),
+      `Volume 2 (ml)` = col_character(),
+      Unit = col_character()
+    )
+  )
+
+hg_afs_lookup <-
+  read_delim(
+    "data/raw/hg_afs/hg_afs_lookup_richterswil.txt",
+    delim = "\t",
+    trim_ws = TRUE,
+    col_types = cols(
+      AFSName = col_character(),
+      PseudoRep = col_double(),
+      Replicate = col_double(),
+      Top = col_double(),
+      Bottom = col_double(),
+      CoreID = col_character(),
+      ExtractionType = col_character(),
+      Weight = col_double(),
+      Exclude = col_logical(),
+      Dil2Factor = col_double(),
+      Dil1Factor = col_double(),
+      DigestionDilution = col_double()
+    )
+  )
+
+hg_afs_data <-
+  bind_rows(
+    hg_afs_data_20170320,
+    hg_afs_data_20170322,
+    hg_afs_data_sequential
+  )
+
+# There are invalid (duplicated) names in this file that are renamed during reading.
+# There are some NA lines in the original data
+hg_isotope_data <-
+  read_delim(
+    "data/raw/hg_isotopes/201705_hgiso_richterswil.csv",
+    delim = ";",
+    trim_ws = TRUE,
+    name_repair = "unique",
+    show_col_types = FALSE
+  ) %>%
+  filter(!if_all(everything(), is.na))
+
+icp_oes_data <-
+  read_delim(
+    "data/raw/icp_oes/20170310_icp_oes_richterswil.csv",
+    delim = ";",
+    trim_ws = TRUE,
+    col_types = cols(
+      Position = col_double(),
+      Measurement = col_character(),
+      DateTime = col_character(),
+      MethodName = col_character(),
+      ResultType = col_character(),
+      SampleName = col_character(),
+      DigestionRun = col_double(),
+      StandardType = col_character(),
+      SampleType = col_character(),
+      CoreID = col_character(),
+      Top = col_double(),
+      Bottom = col_double(),
+      Replicate = col_double(),
+      CalConc = col_double(),
+      CalGroup = col_double(),
+      `As 189.042` = col_double(),
+      `Cd 214.438` = col_double(),
+      `Co 228.616` = col_double(),
+      `Cr 267.716` = col_double(),
+      `Cu 324.754` = col_double(),
+      `Fe 259.9_2` = col_double(),
+      `Fe 262.829` = col_double(),
+      `Mn 257.611` = col_double(),
+      `Ni 231.604` = col_double(),
+      `Pb 220.353` = col_double(),
+      `Sn 242.949` = col_double(),
+      `Ti 307.864` = col_double(),
+      `Ti 334.941` = col_double(),
+      `Zn 213.856` = col_double()
+    )
+  )
+
+icp_oes_weights <-
+  read_delim(
+    "data/raw/icp_oes/icp_oes_digestion1_weights_richterswil.txt",
+    delim = "\t",
+    trim_ws = TRUE,
+    col_types = cols(
+      `#ID` = col_double(),
+      SampleName = col_character(),
+      `Weight [mg]` = col_double(),
+      Type = col_character(),
+      Date = col_character(),
+      Time = col_time(format = "")
+    )
+  ) %>%
+  bind_rows(
+    read_delim(
+      "data/raw/icp_oes/icp_oes_digestion2_weights_richterswil.txt",
+      delim = "\t",
+      trim_ws = TRUE,
+      col_types = cols(
+        `#ID` = col_double(),
+        SampleName = col_character(),
+        `Weight [mg]` = col_double(),
+        Type = col_character(),
+        Date = col_character(),
+        Time = col_time(format = "")
+      )
+    )
+  )
+
+linescan_aw1316_raster <-
+  readJPEG("data/processed/linescans/AW-13-16_app4.8_50cm.jpg",
+    native = TRUE
+  )
+
+linescan_zh1611_raster <-
+  readJPEG("data/processed/linescans/ZH-16-11_ap5.6_50cm.jpg", native = TRUE)
+
+radiodating_aw1316_gamma_names <-
+  read_delim(
+    "data/raw/radiodating/gammadating_AW1316_name_lookup_richterswil.csv",
+    delim = ";",
+    trim_ws = TRUE,
+    col_types = cols(
+      SampleID = col_character(),
+      top = col_double(),
+      bottom = col_double()
+    )
+  )
+
+# Illegal (duplicated) column names are renamed.
+radiodating_aw1316_gamma_activity <-
+  read_delim(
+    "data/raw/radiodating/gammadating_AW1316_activities_richterswil.csv",
+    delim = ";",
+    trim_ws = TRUE,
+    show_col_types = FALSE
+  )
+
+radiodating_aw1316_pu <-
+  read_delim(
+    "data/raw/radiodating/pu_dating_AW1316_richterswil.csv",
+    delim = ";",
+    trim_ws = TRUE,
+    col_types = cols(
+      SampleID = col_character(),
+      Pu = col_double(),
+      `1s err` = col_double()
+    )
+  )
+
+radiodating_zh1611_gamma_names <-
+  read_delim(
+    "data/raw/radiodating/gammadating_ZH1611_name_lookup_richterswil.csv",
+    delim = ";",
+    trim_ws = TRUE,
+    col_types = cols(
+      SampleID = col_character(),
+      top = col_double(),
+      bottom = col_double()
+    )
+  )
+
+# Illegal (duplicated) variables are automatically renamed.
+radiodating_zh1611_gamma_activity <-
+  read_delim(
+    "data/raw/radiodating/gammadating_ZH1611_activities_richterswil.csv",
+    delim = ";",
+    trim_ws = TRUE,
+    show_col_types = FALSE
+  )
+
+radiodating_gamma_activity <-
+  bind_rows(
+    radiodating_aw1316_gamma_activity,
+    radiodating_zh1611_gamma_activity
+  )
+
+radiodating_gamma_names <-
+  bind_rows(
+    radiodating_aw1316_gamma_names,
+    radiodating_zh1611_gamma_names
+  )
+
+# Empty column at the end automatically renamed
+tic_data <-
+  read_csv(
+    "data/raw/tc_tic/20170531_tic_richterswil.txt",
+    skip = 13,
+    show_col_types = FALSE
+  )
+
+tc_data <-
+  read_csv("data/raw/tc_tic/20170530_tc_richterswil.csv",
+    col_types = cols(
+      Name = col_character(),
+      CoreID = col_character(),
+      Top = col_double(),
+      Bottom = col_double(),
+      Type = col_character(),
+      C = col_double(),
+      H = col_double(),
+      N = col_double(),
+      S = col_double(),
+      Exclude = col_logical()
+    )
+  )
+
+# Avaatech WinAXIL csv files have a unique and somewhat difficult file structure.
+# Information is stored in the first column and it needs to be extracted in multiple steps. Because of that, the function parse_avaatech_csv_file checks the files for validity and parses the contained information. This is looped with purr::map_dfr(). If a file fails validation or triggers an error, it is skipped.
+avaa_winaxil_csv_files <-
+  dir("data/raw/xrf_cs", pattern = ".csv", full.names = TRUE)
+xrf_data <-
+  map_dfr(
+    avaa_winaxil_csv_files,
+    possibly(
+      parse_avaatech_winaxil_csv,
+      otherwise = NULL,
+      quiet = FALSE
+    )
+  )
+```
+
+# Hg-CV-AFS Measurements
+Three digestions (the first two using *aqua regia*, the third using the sequential extraction procedure described in the paper) were made on 
+20 March 2017 (first digestion, no replicates digested), 22 March 2017 (second digestion, duplicates of samples with concentrations outside of the calibrated range in the first digrestion) and on 18 May 2017 (Sequential extractions for selected samples).
+Hg was measured using a CV-Hg-AFS system. The raw data exported from the system already contained concentrations that were calculated from fluorescence data.
+An inspection of the calibrations shows that the machine works accurately.
+
+```{r data:hg_afs}
+hg_afs_joined <- hg_afs_data %>%
+  left_join(hg_afs_lookup, by = c("Name" = "AFSName"))
+
+hg_afs_calibrations <- hg_afs_joined %>%
+  filter(Type == "Cal") %>%
+  select(Conc, `Pk Ht`, `Pk Area`, Cal) %>%
+  group_by(Cal) %>%
+  nest(data = c(Conc, `Pk Ht`, `Pk Area`)) %>%
+  mutate(
+    model = map(data, ~ lm(`Pk Area` ~ Conc, data = .x)),
+    tidied = map(model, tidy),
+    glanced = map(model, glance)
+  ) %>%
+  unnest(glanced)
+
+hg_afs_samples <- hg_afs_joined %>%
+  filter(Type == "Sample", Pos > 10, Exclude == FALSE, !is.na(ExtractionType)) %>%
+  select(Pos, Name, Conc, Datetime = "Date/Time", PseudoRep:DigestionDilution)
+
+hg_afs_samples_conc_wrep <- hg_afs_samples %>%
+  filter(CoreID != "NIST") %>%
+  mutate(SampleConc = Conc * Dil2Factor * Dil1Factor * DigestionDilution / Weight)
+```
+
+```{r table:hg_afs_cal}
+hg_afs_calibrations %>%
+  mutate(r.squared = round(r.squared, 4), p.value = pvalue(p.value)) %>%
+  select(Cal, "R Squared" = r.squared, "p value" = p.value, N = nobs)
+```
+
+A soil standard (NIST 2711a "Montana II") with a specified Hg concentration (7.41 ± 0.18 μg/g, expanded uncertainty denotes c. 95% confidence interval) was used to ensure digestion and machine performance. The standard digested in the first round (no replicates made) has an estimated concentration of 8.59 μg/g, which is outside of the specified concentration.
+
+```{r table:hg_afs_nist_all}
+hg_afs_samples %>%
+  filter(CoreID == "NIST") %>%
+  mutate(SampleConc = Conc * Dil2Factor * Dil1Factor * DigestionDilution / Weight, SampleConc = round(SampleConc, digits = 2)) %>%
+  select(Name, Datetime, PseudoRep, Replicate, Weight, SampleConc)
+```
+
+```{r data:hg_afs_nist_mean}
+hg_afs_nist_mean <- hg_afs_samples %>%
+  filter(CoreID == "NIST") %>%
+  mutate(SampleConc = Conc * Dil2Factor * Dil1Factor * DigestionDilution / Weight) %>%
+  select(Name, Datetime, PseudoRep, Replicate, Weight, SampleConc) %>%
+  summarise(MeanConc = mean(SampleConc), SD2Conc = 2 * sd(SampleConc)) %>%
+  mutate(across(everything(), round, digits = 2))
+```
+
+The mean of all replicates of the standard is `r as.numeric(hg_afs_nist_mean[1])` ± `r as.numeric(hg_afs_nist_mean[2])`
+
+```{r data:hg_afs_samples_conc}
+hg_afs_samples_conc <- hg_afs_samples_conc_wrep %>%
+  group_by(CoreID, Top, Bottom, ExtractionType) %>%
+  summarise(MeanSampleConc = mean(SampleConc), SDSampleConc = sd(SampleConc), N = n(), relsd = SDSampleConc / MeanSampleConc * 100, SEM = SDSampleConc / sqrt(N)) %>%
+  arrange(CoreID, Top, ExtractionType)
+```
+
+The following plot shows that the standard error of the mean (SEM) is relatively small for most replicated measurements.
+
+```{r plot:hg_afs_barplot}
+ggplot(hg_afs_samples_conc, aes(x = as.factor(Top), y = MeanSampleConc, fill = ExtractionType, group = ExtractionType)) +
+  geom_col(position = position_dodge(width = 1), width = 1, colour = "black") +
+  geom_errorbar(aes(ymin = MeanSampleConc - SEM, ymax = MeanSampleConc + SEM), position = position_dodge(width = 1), width = 0.5) +
+  facet_wrap(~CoreID, scales = "free") +
+  labs(x = "Sample top depth [cm]", y = "Concentration [mg/kg]") +
+  scale_fill_viridis("Extraction Type", discrete = TRUE, direction = -1) +
+  theme_linedraw()
+```
+
+In the following stacked plot, the proportion of the extracted fractions F1 and F2 in (F1 + F2) is shown. There is some difference between the extraction proportions between the three cores, but it is not drastic.
+
+```{r plot:hg_fractions}
+hg_yields_pobj <- ggplot(hg_afs_samples_conc %>% filter(ExtractionType != "T"), aes(x = as.factor(Top), y = MeanSampleConc, fill = fct_relevel(ExtractionType, c("F2", "F1")))) +
+  ylab("Prop. of F1 and F2 in (F1 + F2)") +
+  scale_x_discrete("Sample depth [cm]") +
+  theme(
+    strip.background = element_blank(),
+    strip.placement = "inside",
+    panel.background = element_rect(fill = "white"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line()
+  ) +
+  geom_bar(position = "fill", stat = "identity", color = "black") +
+  scale_fill_grey("Extraction") +
+  facet_grid(~CoreID, scales = "free")
+
+hg_yields_pobj
+```
+
+# Hg isotopes
+
+```{r data:hg_isotopes}
+# Some data wrangling and tidying
+hg_isotope_colnames <- names(hg_isotope_data)
+hg_isotope_errors_indices <-
+  str_which(hg_isotope_colnames, pattern = "Error")
+hg_isotope_colnames[hg_isotope_errors_indices] <-
+  paste(hg_isotope_colnames[hg_isotope_errors_indices - 1], "Error")
+names(hg_isotope_data) <- hg_isotope_colnames
+
+hg_isotope_tidy <- hg_isotope_data %>%
+  mutate(`Key` = seq_len(nrow(.))) %>%
+  mutate(across(
+    contains("Error"),
+    ~ str_replace_all(.x, pattern = "[{}\\s]", replacement = "") %>% as.numeric(.x)
+  )) %>%
+  pivot_longer((1:(ncol(hg_isotope_data) - 3)),
+    names_to = c("Field1", "Field2", "Field3", "Field4"),
+    names_sep = "\\s"
+  ) %>%
+  mutate(
+    `Date and Time` = str_c(
+      str_extract(`Sample Name`, "(?<=run on |Reanalysed )\\d+\\s\\w+\\s\\d+"), # This code will only work for this particular dataset due to the inconsistency of the raw file
+      str_extract(`Sample Name`, "(?<=at )\\d+:\\d+"),
+      sep = " "
+    ),
+    Datetime = parse_date_time(`Date and Time`, orders = "dbYHM", locale = "en_US"),
+    Field4 = case_when(
+      str_detect(Field1, "Error") |
+        str_detect(Field2, "Error") |
+        str_detect(Field3, "Error") |
+        str_detect(Field4, "Error") ~ "Error",
+      TRUE ~ "Estimate"
+    ),
+    Field1 = case_when(
+      str_detect(Field1, "Total") &
+        str_detect(Field2, "Tl") ~ "Total Tl beam",
+      str_detect(Field1, "Total") &
+        str_detect(Field2, "Hg") ~ "Total Hg beam",
+      TRUE ~ Field1
+    ),
+    Field3 = case_when(
+      Field2 == "raw" ~ "raw",
+      Field3 == "corr" ~ "corr",
+      TRUE ~ NA_character_
+    ),
+    Name = str_extract(`Sample Name`, "(?<=\\').+(?=\\')"),
+    Type = case_when(
+      str_detect(tolower(Name), "nist") ~ "NIST",
+      str_detect(tolower(Name), "fluka") ~ "Fluka",
+      TRUE ~ "Sample"
+    )
+  ) %>%
+  select(
+    Key,
+    Name,
+    Type,
+    Datetime,
+    Parameter = Field1,
+    Correction = Field3,
+    ValueType = Field4,
+    value
+  ) %>%
+  pivot_wider(names_from = ValueType, values_from = value)
+
+# All estimates are referenced to the NIST standard (see paper for explanation). We use standard bracketing to further compensate for drift.
+hg_isotope_referenced <- hg_isotope_tidy %>%
+  filter(Datetime >= ymd("2017-05-19")) %>%
+  group_by(Parameter, Correction) %>%
+  mutate(
+    ReferencedEstimate = ((Estimate - ((
+      lag(Estimate) + lead(Estimate) # By using lagged (-1) and lead (+1) samples (which have to be standards!) we can reference values.
+    ) / 2)) / ((
+      lag(Estimate) + lead(Estimate)
+    ) / 2)) * 1000,
+    ReferencedEstimate = if_else(Type != "NIST", ReferencedEstimate, NA_real_)
+  ) %>%
+  ungroup()
+
+# Filtering data from my session and only some of the many different parameters that we are interested in.
+hg_isotope_sample <- hg_isotope_referenced %>%
+  filter(Type %in% c("Sample", "Fluka"), Key > 121, Parameter %in% c("202/198", "201/198", "200/198", "199/198", "204/198", "198/196"), Correction == "corr") %>%
+  mutate(
+    CoreID = case_when(
+      str_detect(Name, "A16") ~ "AW-13-16",
+      str_detect(Name, "Z10") ~ "ZH-16-10",
+      str_detect(Name, "Z11") ~ "ZH-16-11",
+      TRUE ~ NA_character_
+    ),
+    Run = case_when( # Repairing bad naming
+      str_detect(Name, "Run 2") ~ 2,
+      str_detect(Name, "Rerun") ~ 2,
+      str_detect(Name, "2nd Rerun") ~ 3,
+      TRUE ~ 1
+    ),
+    Extraction = case_when(
+      str_detect(Name, "T1") ~ "T",
+      str_detect(Name, "F1") ~ "F1",
+      str_detect(Name, "F2") ~ "F2",
+      TRUE ~ NA_character_
+    ),
+    Name = case_when(
+      Type == "Sample" ~ str_extract(Name, "[AZ]\\d+Hg\\d+"),
+      Type == "Fluka" ~ "Fluka",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  select(Key, Name, CoreID, Extraction, Run, Type, Datetime, Parameter, ReferencedEstimate) %>%
+  pivot_wider(names_from = "Parameter", values_from = "ReferencedEstimate", names_prefix = "d") %>%
+  mutate(D199 = `d199/198` - (`d202/198` * 0.252), D200 = `d200/198` - (`d202/198` * 0.5024), D201 = `d201/198` - (`d202/198` * 0.752), D204 = `d204/198` - (`d202/198` * 1.493), `D199/D201` = D199 / D201) # To calculate these Delta values, we need to use empirical scaling factors (see referenced papers for explanation).
+
+hg_isotope_uncertainty <- hg_isotope_sample %>%
+  pivot_longer(`d202/198`:`D199/D201`, names_to = "Parameter", values_to = "ReferencedEstimate") %>%
+  group_by(Parameter) %>%
+  filter(tolower(Type) == "fluka") %>%
+  summarise(
+    MeanFluka = mean(ReferencedEstimate),
+    Sigma2Fluka = 2 * sd(ReferencedEstimate)
+  )
+```
+
+To assess the "stability" of the MC-IPC-MS during the measurement sessions, we use the fractionation index to point out sudden jumps (e.g. due to re-tuning or unknown reasions).
+
+```{r plot:hg_iso_fract, fig.height=3, fig.width=12}
+ggplot(
+  hg_isotope_referenced %>% filter(Parameter == "Fract"),
+  aes(x = Key, y = Estimate)
+) +
+  geom_point() +
+  theme_linedraw() +
+  scale_y_continuous(limits = c(-1.5, -0.5)) +
+  geom_errorbar(aes(ymin = Estimate - Error, ymax = Estimate + Error), colour = "red") +
+  geom_text(aes(label = Name),
+    angle = 90,
+    hjust = 0,
+    nudge_y = 0.05
+  )
+```
+
+The 2D-isotopic composition scatter plot shows that there are discernable groups, especially between AW-13-16 and the other two cores, while the extraction method does not seem to be important in this respect.
+
+```{r plot:hg_iso_scatter}
+hg_iso_pobj <- ggplot(
+  hg_isotope_sample %>% filter(Type == "Sample"),
+  aes(
+    x = `d202/198`,
+    y = `D199`,
+    colour = CoreID,
+    shape = Extraction,
+    group = CoreID
+  )
+) +
+  labs(
+    x = expression(delta^{
+      202
+    } ~ "Hg [\u2030]"),
+    y = expression(Delta^{
+      199
+    } ~ "Hg [\u2030]")
+  ) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(
+    ymin = D199 - as.numeric(hg_isotope_uncertainty[hg_isotope_uncertainty$Parameter == "D199", "Sigma2Fluka"]),
+    ymax = D199 + as.numeric(hg_isotope_uncertainty[hg_isotope_uncertainty$Parameter == "D199", "Sigma2Fluka"])
+  ), alpha = 0.5) +
+  geom_errorbarh(aes(
+    xmin = `d202/198` - as.numeric(hg_isotope_uncertainty[hg_isotope_uncertainty$Parameter == "d202/198", "Sigma2Fluka"]),
+    xmax = `d202/198` + as.numeric(hg_isotope_uncertainty[hg_isotope_uncertainty$Parameter == "d202/198", "Sigma2Fluka"])
+  ),
+  alpha = 0.5
+  ) +
+  stat_ellipse() +
+  theme(
+    strip.background = element_blank(),
+    strip.placement = "inside",
+    panel.background = element_rect(fill = "white"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line(),
+    legend.background = element_rect(fill = "white"),
+    legend.key = element_rect(fill = "white")
+  ) +
+  scale_color_manual(values = c("AW-13-16" = "#440154", "ZH-16-10" = "#2A788E", "ZH-16-11" = "#7AD151"))
+
+hg_iso_pobj
+```
+
+A multiple ANOVA shows us that there is indeed a strong influence of the Core on both isotopic ratios, however there is no significant effect for the extraction method (or the interaction term).
+
+```{r data:hg_iso_manova}
+hgiso_manova <- manova(cbind(`d202/198`, D199) ~ Extraction * CoreID, hg_isotope_sample)
+pander(hgiso_manova)
+```
+
+A detailed summary shows that the influence of the core on the isotopic composition is indeed significant for either response variable (i.e. either of two isotopic ratios).
+
+```{r data:hg_iso_manova_summary}
+summary.aov(hgiso_manova)
+```
+
+# ICP-OES
+```{r data:icp_oes}
+# We used two different calibration standards since most multielement standards do not contain Sn.
+# NB: The ICP-OES method did not contain information about every element contained in the multi-element standard, thus not all of these elements are found in the ICP-OES data.
+icp_oes_merck_iv_elements <- c("Ag", "Al", "B", "Ba", "Bi", "Ca", "Cd", "Co", "Cr", "Cu", "Fe", "Ga", "In", "K", "Li", "Mg", "Mn", "Na", "Ni", "Pb", "Sr", "Tl", "Zn")
+icp_oes_Sn <- c("Sn")
+
+icp_oes_joined <- icp_oes_data %>%
+  left_join(icp_oes_weights, by = "SampleName") %>%
+  select(-c(MethodName, ResultType, `#ID`, Type, Date, Time)) %>%
+  select(Position, Measurement, Weight = `Weight [mg]`, everything()) %>%
+  pivot_longer(starts_with("As"):last_col(), names_to = c("Element", "Wavelength"), names_sep = "\\s", values_to = "Emission") %>%
+  filter(Element %in% icp_oes_merck_iv_elements | Element %in% icp_oes_Sn) %>%
+  mutate(DateTime = dmy_hm(DateTime)) %>%
+  arrange(Position, Element, Wavelength, DateTime)
+```
+
+If we look at the calibration of the Sn signal (single-element standard solution), we can see that there are no big jumps between the different calibration groups that were made during the ICP-OES measurement session. The colour of the heatmap represents the emission as reported by the ICP-OES.
+
+```{r plot:icp_oes_sn_cal_heatmap}
+icp_oes_joined %>%
+  filter(SampleType == "SnCal", Element == "Sn", Measurement == "Single") %>%
+  ggplot(aes(x = as.factor(CalGroup), y = as.factor(CalConc), fill = Emission)) +
+  geom_tile(color = "white", size = 0.1) +
+  labs(x = "Calibration Group", y = "Cal. Concentration") +
+  scale_fill_viridis("Emission") +
+  facet_nested(~ Element + Wavelength, nest_line = element_line()) +
+  coord_equal() +
+  theme_linedraw()
+```
+
+If we do the same for the multi-element standard/calibration, we can see that there is a "jump" between calibration groups 1-3 and group 4. Furthermore, the highest (5 mg/L) and lowest (blank) calibration solutions show a certain variability, but since the colours in this plot are scaled per element *and* calibration concentration, this can be expected.
+For the calculation of the sample concentrations, we did not use the calibration data from group 4.
+
+```{r plot:icp_oes_multielement_cal_heatmap, fig.height=3, fig.width=12}
+icp_oes_joined %>%
+  filter(SampleType == "MerckIVCal", Element %in% icp_oes_merck_iv_elements, Measurement == "Single") %>%
+  group_by(Element, Wavelength, CalConc) %>%
+  mutate(ScaledEmission = rescale(Emission)) %>%
+  ggplot(aes(x = as.factor(CalGroup), y = as.factor(CalConc), fill = ScaledEmission)) +
+  geom_tile(color = "white", size = 0.1) +
+  labs(x = "Calibration Group", y = "Cal. Concentration") +
+  scale_fill_viridis("Scaled Emission") +
+  facet_nested(~ Element + Wavelength, nest_line = element_line()) +
+  coord_equal() +
+  theme_linedraw()
+```
+
+A special case arises with iron which can be measured on two prominent wavelengths (the emission line at 259.9 nm is from $Fe^2$). The following plot shows that the signal for iron at 259.9 nm is higher, but more variable. Because of that, we chose the lower signal at 262.829 nm for the calibration of iron.
+
+```{r plot:icp_oes_Fe_lines}
+icp_oes_joined %>%
+  filter(SampleType == "MerckIVCal", Element == "Fe", Measurement == "Single") %>%
+  ggplot(aes(x = as.factor(Position), y = Emission, colour = as.factor(CalGroup), shape = as.factor(Wavelength))) +
+  geom_point() +
+  facet_grid(~CalConc, scales = "free") +
+  scale_colour_viridis("CalGroup", discrete = TRUE) +
+  scale_shape_discrete("Wavelength") +
+  scale_x_discrete("Position", labels = NULL, breaks = NULL) +
+  theme_linedraw()
+```
+
+An analysis of the digestion blanks shows that the emission signal is relatively low for all elements with no big jumps being visible. We can thus assume that our blanks are clean.
+
+```{r plot:icp_oes_blank}
+icp_oes_blank <- icp_oes_joined %>%
+  filter(SampleType == "Blank", Element %in% icp_oes_merck_iv_elements | Element %in% icp_oes_Sn, Measurement == "Single")
+
+icp_oes_blank %>%
+  ggplot(aes(x = as.factor(Position), y = Emission)) +
+  geom_point() +
+  facet_wrap(~ interaction(Element, Wavelength), scales = "free") +
+  scale_x_discrete("Position", labels = NULL, breaks = NULL) +
+  theme_linedraw()
+```
+
+```{r data:icp_oes_cal_lm}
+icp_oes_cal_merckiv <- icp_oes_joined %>%
+  filter(SampleType == "MerckIVCal", CalGroup != 4, Element %in% icp_oes_merck_iv_elements, Measurement == "Average", Wavelength != "259.9_2") %>%
+  group_by(Element, CalConc) %>%
+  summarise(Emission = mean(Emission)) %>%
+  nest(data = c(CalConc, Emission)) %>%
+  mutate(
+    model = map(data, ~ lm(Emission ~ CalConc, data = .x)), # We can calculate the linear regression for every element of the multi-element standard in one go!
+    tidied = map(model, tidy)
+  )
+
+# We have to split up the dataset again to calculate the Sn regression separately.
+icp_oes_cal_Sn <- icp_oes_joined %>%
+  filter(SampleType == "SnCal", CalGroup != 4, Element %in% icp_oes_Sn, Measurement == "Average", Wavelength != "259.9_2") %>%
+  group_by(Element, CalConc) %>%
+  summarise(Emission = mean(Emission)) %>%
+  nest(data = c(CalConc, Emission)) %>%
+  mutate(
+    model = map(data, ~ lm(Emission ~ CalConc, data = .x)),
+    tidied = map(model, tidy)
+  )
+
+icp_oes_cal <- bind_rows(icp_oes_cal_merckiv, icp_oes_cal_Sn)
+```
+
+The linear regressions used for the calibration of the multi-element standard look "linear".
+
+```{r plot:icp_oes_regressions}
+icp_oes_joined %>%
+  filter(SampleType == "MerckIVCal", CalGroup != 4, Measurement == "Average", Element %in% icp_oes_merck_iv_elements) %>%
+  ggplot(aes(x = CalConc, y = Emission, colour = as.factor(CalGroup))) +
+  geom_point() +
+  geom_smooth(formula = "y ~ x", method = "lm", se = FALSE) +
+  facet_wrap(Wavelength ~ Element, scales = "free") +
+  scale_y_continuous(labels = label_number_si()) +
+  scale_colour_viridis("CalGroup", discrete = TRUE) +
+  theme_linedraw()
+```
+
+An analysis of the three single measurements the ICP-OES makes of each sample shows that the relative uncertainty between samples is no larger than c. 2.5% $\sigma_{rel}$ and in most cases below 1%.
+
+```{r plot:icp_oes_repeats_uncertainty}
+# Relative error (% 1sigma) between repeated measures <= 2.5%, Choosing Fe at 262.829 nm (better peak shape)
+icp_oes_joined %>%
+  filter(SampleType == "Sample", Element %in% icp_oes_merck_iv_elements | Element %in% icp_oes_Sn, Measurement == "Single", Wavelength != "259.9_2") %>%
+  group_by(SampleName, Element) %>%
+  summarise(avg = mean(Emission), sd = sd(Emission), relsd = sd / avg * 100) %>%
+  arrange(desc(relsd)) %>%
+  ggplot(aes(relsd)) +
+  geom_histogram() +
+  theme_linedraw()
+```
+
+We calculate the ICP-OES sample solution concentrations manually as $Conc = (Emission - \alpha)/\beta$ where $\beta$ is the slope of our regression and $\alpha$ the intercept. While the variance between repeated measures is low, the same cannot be said for the technical replicates: In some cases, the relative standard deviation between triplicates is reaches 50%, but in most cases, it is 10% or lower.
+
+```{r data:icp_oes_samples_standards_conc}
+icp_oes_samples_standards_average <- icp_oes_joined %>%
+  filter(SampleType %in% c("Sample", "Standard"), Element %in% icp_oes_merck_iv_elements | Element %in% icp_oes_Sn, Measurement == "Average", Wavelength != "259.9_2")
+
+# We calculate sample concentrations manually: Emission = beta*Conc + alpha --> Conc = (Emission - alpha)/beta
+icp_oes_samples_standards_conc <- icp_oes_samples_standards_average %>%
+  group_by(Position, Element) %>%
+  left_join(icp_oes_cal, by = "Element") %>%
+  mutate(Concentration = (Emission - tidied[[1]][1, 2]) / tidied[[1]][2, 2] * 5 / ((Weight / 1000) / 0.01) * 1000, Concentration = if_else(Concentration < 0, 0, as.numeric(Concentration)))
+```
+
+```{r plot:icp_oes_histogram_uncertainty}
+icp_oes_samples_standards_conc %>%
+  filter(!is.na(Replicate), SampleType == "Sample") %>%
+  group_by(CoreID, Top, Element) %>%
+  summarise(avg = mean(Concentration), sd = sd(Concentration), relsd = sd / avg * 100) %>%
+  ggplot(aes(relsd)) +
+  geom_histogram() +
+  theme_linedraw()
+```
+
+```{r data:icp_oes_standards_mean_uncertainty}
+# Stdev between standard replicates: Rel. Stdev across all standards, digestion runs and elements c. 31.5 %
+icp_oes_standards_mean_uncertainty <- icp_oes_samples_standards_conc %>%
+  filter(!is.na(Replicate), SampleType == "Standard") %>%
+  select(Weight, DigestionRun, StandardType, Replicate, Element, Concentration) %>%
+  group_by(StandardType, Element) %>%
+  summarise(avg = mean(Concentration), sd = sd(Concentration), relsd = sd / avg * 100) %>%
+  group_by(Element) %>%
+  summarise(meanrelsd = mean(relsd), medrelsd = median(relsd)) %>%
+  ungroup() %>%
+  summarise(meanrelsd = round(mean(meanrelsd, na.rm = TRUE), digits = 1))
+
+# TO DO: LOD und LOQ bestimmen und ungültige Messungen aussortieren -> Evtl. nach Reviewrunde machen
+```
+
+The relative standard deviation between all 4 different soil standards is `r icp_oes_standards_mean_uncertainty$meanrelsd`
+
+The following plot suggests that the relative standard deviation between replicates of the standards is much higher for samples from the first digestion run. This could suggest that there was a problem with some samples during the first run.
+
+```{r plot:icp_oes_first_run_stds_uncertainty}
+icp_oes_samples_standards_conc %>%
+  filter(!is.na(Replicate), SampleType == "Standard") %>%
+  group_by(StandardType, Element, DigestionRun) %>%
+  summarise(avg = mean(Concentration), sd = sd(Concentration), relsd = sd / avg * 100) %>%
+  ggplot(aes(y = relsd, x = Element, fill = as.factor(DigestionRun))) +
+  geom_col(position = "dodge") +
+  facet_wrap(~StandardType) +
+  scale_fill_grey("Digestion Run") +
+  theme_linedraw()
+```
+
+The following plot shows the sample concentrations over the core depth with errorbars denoting $2\sigma$ (c. 95% CI). It is unclear why the variability between samples of ZH-16-11 is larger, but since the same can seen for several elements in the core, it could arise from sample inhomogeneity.
+
+```{r plot:icp_oes_sample_conc_lines}
+icp_oes_samples_standards_conc %>%
+  filter(SampleType == "Sample") %>%
+  group_by(CoreID, Top, Element) %>%
+  summarise(meanconc = mean(Concentration), SD2 = 2 * sd(Concentration), N = n()) %>%
+  ggplot(aes(x = Top, y = meanconc)) +
+  scale_x_reverse("Depth") +
+  geom_errorbar(aes(ymin = meanconc - SD2, ymax = meanconc + SD2), colour = "red") +
+  scale_y_continuous("Concentration [mg/kg]", breaks = breaks_pretty(n = 2), labels = label_number_si()) +
+  coord_flip() +
+  geom_line() +
+  facet_grid(CoreID ~ Element, scales = "free") +
+  theme_linedraw()
+```
+
+```{r data:icp_oes_mean_sample_conc}
+icp_oes_samples_meanconc <- icp_oes_samples_standards_conc %>%
+  filter(SampleType == "Sample") %>%
+  group_by(CoreID, Top, Bottom, Element) %>%
+  summarise(meanconc = mean(Concentration), SD2 = 2 * sd(Concentration), N = n())
+```
+
+# Radiodating
+Radiometric dating was done using unsupported $^{210}Pb$ dating and event dating with $^{137}Cs$ (see paper for more information). 
+
+## Unsupported Pb-210 dating
+We calculate the sedimentation rate via log-linear regression of the unsupported $^{210}Pb$ activity vs. depth. An important drawback of this method is its sensitivity to outliers and the high leverage points with a low activity, in the deeper part of the core, get.
+
+```{r data:radiodating}
+radiodating_gamma <- radiodating_gamma_activity %>%
+  left_join(radiodating_gamma_names, by = "SampleID")
+
+# The gamma spectrometer reports uncertainty as percent of 2 * standard deviation
+radiodating_names <- names(radiodating_gamma)
+nuclide_indices <- c(2, 4, 6, 8)
+radiodating_names[nuclide_indices + 1] <- paste(radiodating_names[nuclide_indices], "SD2pro")
+names(radiodating_gamma) <- radiodating_names
+
+radiodating_aw1316_pu_joined <- radiodating_aw1316_pu %>%
+  mutate(Nuclide = "Pu", Estimate = Pu, SD2 = 2 * `1s err`) %>%
+  select(SampleID, Nuclide, Estimate, SD2) %>%
+  left_join(radiodating_gamma_names)
+
+radiodating_tidy <- radiodating_gamma %>%
+  filter(!is.na(top)) %>%
+  mutate(across(c(2, 4, 6, 8), ~ .x * 1000)) %>% # Converting to the more commong Bq/kg
+  mutate(`K-40 SD2` = `K-40` * `K-40 SD2pro` / 100, `Cs-137 SD2` = `Cs-137` * `Cs-137 SD2pro` / 100, `Pb-210 SD2` = `Pb-210` * `Pb-210 SD2pro` / 100, `Ra-226 SD2` = `Ra-226` * `Ra-226 SD2pro` / 100) %>%
+  select(!contains("pro")) %>%
+  mutate(unsupportedPb = `Pb-210` - `Ra-226`, `unsupportedPb SD2` = sqrt(`Pb-210 SD2`^2 + `Ra-226 SD2`^2)) %>% # According to the model of unsupported Pb-210 (decay chain of U-238), Pb-210 that is deposited from the atmosphere is created from short-lived Rn-222, it is in a so called secular equilibrium. Thus by subtracting Ra-226 from the total measured Pb-210, we can estimate the Pb-210 that was deposited by atmospheric processes.
+  select(SampleID, top, bottom, everything()) %>%
+  pivot_longer(4:13, names_to = c("Nuclide", "Measure"), values_to = c("Value"), names_sep = " ") %>%
+  mutate(Measure = if_else(is.na(.$Measure), "Estimate", Measure)) %>%
+  pivot_wider(names_from = Measure, values_from = Value) %>%
+  bind_rows(radiodating_aw1316_pu_joined) %>%
+  mutate(CoreID = case_when(
+    str_detect(SampleID, "AW13-16") ~ "AW-13-16",
+    str_detect(SampleID, "ZH16-11") ~ "ZH-16-11"
+  )) %>%
+  drop_na() %>%
+  filter(Estimate >= 0, Estimate >= SD2)
+```
+
+The following log-linear plot show that the regressions are indeed more or less log-linear, but due to the logarithmic display, a measurement in ZH-16-11 at 7.5 cm depth gains a very large uncertainty (uncertainty expressed as 2 standard deviation). This measurement is removed for the regression.
+
+```{r plot:pb210_loglinear}
+radiodating_tidy %>%
+  filter(Nuclide == "unsupportedPb") %>%
+  ggplot(aes(x = bottom, y = log(Estimate))) +
+  geom_errorbar(aes(ymin = log(Estimate - SD2), ymax = log(Estimate + SD2))) +
+  geom_point() +
+  labs(x = "Depth", y = "log(Activity)") +
+  geom_smooth(method = "lm") +
+  facet_wrap(~CoreID) +
+  theme_linedraw()
+```
+
+```{r data:radiodating_filter}
+radiodating_tidy <- radiodating_tidy %>%
+  filter(!(top == 7.0 & CoreID == "ZH-16-11"))
+```
+
+The same regression without the measurement at 7.0 cm looks better, but the first point looks like an outlier and the deepest point has a big  leverage.
+
+```{r plot:pb210_loglinear_improved}
+radiodating_tidy %>%
+  filter(Nuclide == "unsupportedPb") %>%
+  ggplot(aes(x = bottom, y = log(Estimate))) +
+  labs(x = "Depth", y = "log(Activity)") +
+  geom_errorbar(aes(ymin = log(Estimate - SD2), ymax = log(Estimate + SD2))) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  facet_wrap(~CoreID) +
+  theme_linedraw()
+```
+
+```{r data:radiodating_model}
+# Halflife of Pb-210 is 22.3 years. For the calculation of the sediment rate from the regression we need the decay rate.
+pb210_decayrate <- -log(2) / 22.3
+
+radiodating_model <- radiodating_tidy %>%
+  filter(Nuclide == "unsupportedPb") %>%
+  select(CoreID, bottom, Estimate) %>%
+  group_by(CoreID) %>%
+  nest(data = c(bottom, Estimate)) %>%
+  mutate(
+    model = map(data, ~ lm(log(Estimate) ~ bottom, data = .x)),
+    tidied = map(model, tidy)
+  ) %>%
+  unnest(tidied)
+```
+
+The analysis of the regression shows that indded the first and the last observation in the regression have high leverage, non-constant error and thus should be removed from the analysis.
+
+```{r plot:radiodating_diag_regression}
+autoplot(radiodating_model[[3, "model"]][[1]], label.repel = TRUE) +
+  theme_linedraw()
+```
+
+```{r data:radiodating_model_improved}
+radiodating_model <- radiodating_tidy %>%
+  filter(Nuclide == "unsupportedPb") %>%
+  filter(SampleID != "ZH16-11_01", SampleID != "ZH16-11_22") %>%
+  select(CoreID, bottom, Estimate) %>%
+  group_by(CoreID) %>%
+  nest(data = c(bottom, Estimate)) %>%
+  mutate(
+    model = map(data, ~ lm(log(Estimate) ~ bottom, data = .x)),
+    tidied = map(model, tidy)
+  ) %>%
+  unnest(tidied)
+```
+
+The regression analysis of the data with above mentioned points removed shows less systematic errors, no points of large leverage, a normal distribution in the Q-Q plot.
+
+```{r plot:radiodating_diag_regression_improved}
+autoplot(radiodating_model[[3, "model"]][[1]], label.repel = TRUE) +
+  theme_linedraw()
+```
+
+```{r data:sedrate_pb210}
+sedrate_aw1316 <- as.numeric(pb210_decayrate / radiodating_model[radiodating_model$CoreID == "AW-13-16" & radiodating_model$term == "bottom", "estimate"])
+
+sedrate_zh1611 <- as.numeric(pb210_decayrate / radiodating_model[radiodating_model$CoreID == "ZH-16-11" & radiodating_model$term == "bottom", "estimate"])
+```
+
+The sedimentation rates obtained by $^{210}Pb$ dating are similar, with `r round(sedrate_aw1316, digits = 2)` cm/yr for AW-13-16 and `r round(sedrate_zh1611, digits = 2)` cm/yr for ZH-16-11.
+
+## Cs-137 and Pu event dating
+
+We use Cs-137 and Pu (Pu-239 + Pu-240) data for event dating. We expect to find the 1963 bomb peak and the 1986 Chernobyl peak, as is common in Lake Zurich (see paper and cited literature). We make the following assumptions for the event dating:
+
+* AW-13-16 Cs-137: The small shoulder at 3 cm depth corresponds to the Chernobyl peak 1986. Since the core was taken in 2013, this corresponds to c. 27 years or c. 0.09 cm/yr sedimentation rate.
+* AW-13-16 Cs-137: The peak at 5 cm depth corresponds to the bomb peak in 1963. This corresponds to 50 years or c. 0.09 cm/yr sedimentation rate.
+* AW-13-16 Pu: There is only a Pu signal until c. 7-8 cm. This fits well with the bigger Cs-137 being from 1986 since no Pu was released into the atmosphere during the Chernobyl accident.
+* ZH-16-11: Only one peak can be seen, which is why we assume this peak to be from 1986. This corresponds to 30 years or c. 0.06 cm/yr
+
+All of the radiometric dating suggests that the sedimentation rate at the pollution site was c. 0.1 cm/yr over the last 50 years.
+
+```{r plot:radiodating_event}
+radiodating_tidy %>%
+  filter(Nuclide %in% c("Cs-137", "Pu")) %>%
+  ggplot(aes(x = bottom, y = Estimate)) +
+  scale_x_reverse("Depth [cm]") +
+  geom_errorbar(aes(ymin = Estimate - SD2, ymax = Estimate + SD2), colour = "red") +
+  scale_y_continuous("Activity [Bq/kg]") +
+  coord_flip() +
+  geom_line() +
+  facet_grid(CoreID ~ Nuclide, scales = "free") +
+  theme_linedraw()
+```
+
+# TIC & TOC
+
+```{r data:tictoc}
+tic_conc <- tic_data %>%
+  filter(`Sample Name` != "Empty run") %>%
+  select(`Sample Name`, `Conc.`) %>%
+  group_by(`Sample Name`) %>%
+  summarise(`TIC Concentration` = mean(`Conc.`), `TIC SD` = sd(`Conc.`)) %>%
+  select(Name = `Sample Name`, `TIC Concentration`, `TIC SD`)
+
+tc_conc <- tc_data %>%
+  filter(!Exclude) %>%
+  group_by(Name) %>%
+  summarise(`TC Concentration` = mean(C), `TC SD` = sd(C), CoreID = first(CoreID), Top = first(Top), Bottom = first(Bottom)) %>%
+  select(Name, `TC Concentration`, `TC SD`, CoreID, Top, Bottom)
+
+tictoc <- full_join(tic_conc, tc_conc, by = "Name") %>%
+  mutate(`TOC Concentration` = `TC Concentration` - `TIC Concentration`, `TOC SD` = sqrt(`TC SD`^2 + `TIC SD`^2)) %>%
+  pivot_longer(-c("Name", "CoreID", "Top", "Bottom"), names_to = c("Parameter", "SD"), names_sep = "\\s", values_to = "Concentration") %>%
+  pivot_wider(names_from = "SD", values_from = "Concentration")
+```
+
+```{r data:tictoc_standards}
+tc_conc_std <- tc_conc %>%
+  filter(Name == "Sulfamethazine") %>%
+  mutate(conc = round(`TC Concentration`, 1), sd2 = round(2 * `TC SD`, 1)) %>%
+  select(conc, sd2)
+
+tic_conc_std <- tic_conc %>%
+  filter(Name == "Standard") %>%
+  mutate(conc = round(`TIC Concentration`, 1), sd2 = round(2 * `TIC SD`, 1)) %>%
+  select(conc, sd2)
+```
+
+Three samples (one from AW-13-16, ZH-16-10 and ZH-16-11 each) were measured for TC and TIC. An (unknown) marble standard was used to check performance of the TIC system (TIC ($\% CO_3^{2-}$) = `r as.numeric(tic_conc_std$conc)` ± `r as.numeric(tic_conc_std$sd2)`), and sulfamethazine was used to check the performance of the TC system (TC (% C) = `r as.numeric(tic_conc_std$conc)` ± `r as.numeric(tic_conc_std$sd2)`). Uncertainties denote $2\sigma$.
+
+```{r plot:tictoc}
+ggplot(tictoc %>% filter(Parameter != "TC", !is.na(CoreID)), aes(x = Name, y = Concentration, fill = Parameter)) +
+  geom_col(colour = "black") +
+  ylab("Concentration [% w/w]") +
+  scale_x_discrete(labels = c("A16Hg1" = "AW-13-16\n43 cm", "Z10Hg99" = "ZH-16-10\n20 cm", "Z11Hg1" = "ZH-16-11\n0 cm")) +
+  scale_fill_grey() +
+  theme_linedraw()
+```
+
+# XRF
+
+A first step regarding the XRF data is to check which elements are of interest. To do this, we plot a correlogram plot to check for linear correlation between elements. For this we focus on the three cores closest to the shore (AW-13-16, ZH-16-10 and ZH-16-11). The correlograms show linear correlation (pearson correlation, results are clustered hierarchically) and if the correlation is positive (blue) or negative (red).
+
+```{r data:xrf}
+xrf_all_wide <- xrf_data %>%
+  select(CoreID, Depth, Element, Area) %>%
+  pivot_wider(names_from = "Element", values_from = "Area")
+```
+
+The correlogram for AW-13-16 clearly shows a group of heavy metals correlating with each other and other, detrital and geogenic elements correlating with each other.
+
+```{r plot:xrf_aw1316_correlogram}
+corrplot(cor(xrf_all_wide %>% filter(CoreID == "AW-13-16") %>% select(-c(1, 2))), type = "upper", order = "hclust", title = "AW-13-16 Correlogram", mar = c(0, 0, 2, 0))
+```
+
+The correlogram for ZH-16-10 shows the same but even more pronounced. The negative correlation seen for Ga is most likely an artifact from the XRF scanner. Cd & Zn seem to correlate and the rest of the heavy metals together do.
+
+
+```{r plot:xrf_zh1610_correlogram}
+corrplot(cor(xrf_all_wide %>% filter(CoreID == "ZH-16-10") %>% select(-c(1, 2))), type = "upper", order = "hclust", title = "ZH-16-10 Correlogram", mar = c(0, 0, 2, 0))
+```
+
+The situation is similar, but less clear for ZH-16-11.
+
+```{r plot:xrf_zh1611_correlogram}
+corrplot(cor(xrf_all_wide %>% filter(CoreID == "ZH-16-11") %>% select(-c(1, 2))), type = "upper", order = "hclust", title = "ZH-16-11 Correlogram", mar = c(0, 0, 2, 0))
+```
+
+Since we already know that we expect a heavy metal pollution, we can focus on the elements that correlated strongly before for further analyses. In the following plot, we can clearly see, that the element traces look similar for certain elements.
+
+```{r plot:xrf_heavymetals, fig.width=12}
+elvec <- c("Cr", "Cu", "Hg", "Pb", "Sn", "Zn", "Cd")
+
+ggplot(xrf_data %>% filter(Element %in% elvec), aes(x = Depth, y = Area, colour = Element)) +
+  scale_x_reverse("Depth [mm]") +
+  scale_y_continuous(breaks = pretty_breaks(2), labels = label_number_si()) +
+  coord_flip() +
+  geom_line() +
+  facet_grid(~CoreID, scales = "free") +
+  theme_linedraw()
+```
+
+
+# XRF/ICP-OES calibration
+
+With the ICP-OES and Hg-AFS data measured for ZH-16-10 we can try to "calibrate" our XRF-CS counts to get an estimate for the concentration. This relatively simples approach can only be used to get an idea about the concentrations to expect and it has been found to be inprecise (see paper and references).
+
+First we should visually check that the elements "match". To that end, we can standardise counts and concentrations.
+
+```{r data:xrfcal_rescale}
+xrf_data_zh1610 <- xrf_data %>%
+  filter(CoreID == "ZH-16-10", Element %in% elvec) %>%
+  mutate(Depth = Depth / 10, Source = "XRF") %>%
+  select(Source, CoreID, Depth, Element, Estimate = Area)
+
+icp_oes_data_zh1610 <- icp_oes_samples_meanconc %>%
+  ungroup() %>%
+  filter(CoreID == "ZH-16-10", Element %in% elvec) %>%
+  mutate(Source = "ICP-OES", Depth = Top) %>%
+  select(Source, CoreID, Depth, Element, Estimate = meanconc)
+
+hg_afs_data_zh1610 <- hg_afs_samples_conc %>%
+  ungroup() %>%
+  filter(ExtractionType == "T", CoreID == "ZH-16-10") %>%
+  mutate(Source = "Hg-AFS", Element = "Hg", Depth = Top) %>%
+  select(Source, CoreID, Depth, Element, Estimate = MeanSampleConc)
+
+heavy_metal_data_zh1610 <- bind_rows(xrf_data_zh1610, icp_oes_data_zh1610, hg_afs_data_zh1610) %>%
+  group_by(Source, Element) %>%
+  mutate(RescaledEstimate = rescale(Estimate))
+```
+
+```{r plot:xrfcal_xrf_line_icp_point}
+ggplot(NULL, aes(x = Depth, y = RescaledEstimate, colour = Source)) +
+  scale_x_reverse("Depth [cm]") +
+  scale_y_continuous(breaks = NULL) +
+  coord_flip() +
+  geom_line(data = heavy_metal_data_zh1610 %>% filter(Source == "XRF")) +
+  geom_point(data = heavy_metal_data_zh1610 %>% filter(Source != "XRF")) +
+  facet_grid(~Element, scales = "free") +
+  theme_linedraw()
+```
+
+```{r data:xrfcal_lm}
+xrfcal_combined_data_zh1610 <- xrf_data_zh1610 %>%
+  rename(Counts = Estimate) %>%
+  full_join(
+    (bind_rows(icp_oes_data_zh1610, hg_afs_data_zh1610) %>%
+      rename(Concentration = Estimate)),
+    by = c("CoreID", "Depth", "Element")
+  ) %>%
+  select(-Source.y, -Source.x, -Depth) %>%
+  drop_na()
+
+xrfcal_linearmodel <- xrfcal_combined_data_zh1610 %>%
+  group_by(Element) %>%
+  nest(data = c(Concentration, Counts)) %>%
+  mutate(
+    model = map(data, ~ lm(Concentration ~ Counts, data = .x)),
+    tidied = map(model, tidy),
+    glanced = map(model, glance)
+  ) %>%
+  unnest(glanced) %>%
+  arrange(Element)
+```
+
+The XRF/ICP-OES linear calibration fit is relatively poor, which is not too surprising. Still it should be good enough to roughly estimate the magnitude of the pollution in other sediment cores.
+
+```{r plot:xrfcal_lmplot}
+ggplot(xrfcal_combined_data_zh1610, aes(x = Counts, y = Concentration)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  facet_wrap(~Element, scales = "free") +
+  theme_linedraw()
+```
+
+```{r data:xrfcal_estimates}
+xrfcal_estimates <- xrf_data %>%
+  mutate(Depth = Depth / 10) %>%
+  select(CoreID, Depth, Element, Counts = Area) %>%
+  filter(Element %in% elvec) %>%
+  left_join(xrfcal_linearmodel %>% select(-CoreID), by = "Element") %>%
+  tidypredict_to_column(.$model[[1]], add_interval = TRUE) %>%
+  select(CoreID, Element, Depth, fit, upper, lower) %>%
+  filter(fit >= 0)
+```
+
+We can use the estimated concentrations as a very rough idea how much pollution to expect in cores nearer and further away from the shore, like in AW-13-16.
+
+```{r plot:xrfcal_estimates}
+ggplot(xrfcal_estimates %>% filter(CoreID == "AW-13-16"), aes(x = Depth, y = fit)) +
+  scale_x_reverse("Depth [cm]") +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2, fill = "blue") +
+  scale_y_continuous("Estimated Concentration [mg/kg]", breaks = pretty_breaks(n = 2), labels = label_number_si()) +
+  coord_flip() +
+  geom_line() +
+  facet_grid(~Element, scales = "free") +
+  theme_linedraw() +
+  ggtitle("AW-13-16")
+```
+
+# Outputs
+
+## Figures
+
+The following figure was used in the research article in slightly modified form (Figure 2).
+
+```{r plot:figure2_export}
+AW1316_scanplotobj <-
+  ggplot(
+    radiodating_tidy %>% filter(Nuclide == "Cs-137", CoreID == "AW-13-16"),
+    aes(x = top, y = Estimate)
+  ) + # Modify image file
+  scale_x_reverse("Depth [cm]", limits = c(50, 0)) +
+  scale_y_continuous("Activity [Bq/kg]") +
+  coord_flip() +
+  theme(
+    axis.line = element_line(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank()
+  ) +
+  annotation_custom(
+    rasterGrob(linescan_aw1316_raster, width = 1, height = 1),
+    xmin = 0,
+    xmax = 50 * -1L,
+    ymin = 0,
+    ymax = 40
+  ) +
+  geom_line(colour = "#FDE725") +
+  ggtitle("AW-13-16")
+
+AW1316_XRF_pobj <-
+  ggplot(
+    xrf_data %>% filter(CoreID == "AW-13-16", Element %in% !!elvec),
+    aes(x = Depth / 10, y = Area)
+  ) +
+  coord_flip() +
+  geom_line() +
+  facet_grid(~Element, scales = "free") +
+  scale_x_reverse("", limits = c(50, 0)) +
+  scale_y_continuous("Counts", labels = label_number_si(), breaks = pretty_breaks(n = 2)) +
+  theme(
+    axis.line = element_line(),
+    axis.line.y = element_line(color = "white"),
+    axis.title.y = element_text(color = "white"),
+    axis.text.y = element_text(color = "white"),
+    axis.ticks.y = element_line(color = "white"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    legend.key = element_blank(),
+    strip.background = element_blank(),
+    strip.placement = "inside"
+  ) +
+  annotate("rect",
+    xmin = 6, xmax = 11, ymin = -Inf, ymax = +Inf,
+    alpha = .4, fill = "#440154"
+  ) +
+  annotate("rect",
+    xmin = 11, xmax = 50, ymin = -Inf, ymax = +Inf,
+    alpha = .4, fill = "#2A788E"
+  )
+
+ZH1611_scanplotobj <-
+  ggplot(
+    radiodating_tidy %>% filter(Nuclide == "Cs-137", CoreID == "ZH-16-11"),
+    aes(x = top, y = Estimate)
+  ) + # Modify image file
+  annotation_custom(
+    rasterGrob(linescan_zh1611_raster, width = 1, height = 1),
+    xmin = 0,
+    xmax = 50 * -1L,
+    ymin = 0,
+    ymax = 65
+  ) +
+  geom_line(color = "#FDE725") +
+  scale_x_reverse("Depth [cm]", limits = c(50, 0)) +
+  scale_y_continuous("Activity [Bq/kg]") +
+  coord_flip() +
+  theme(
+    axis.line = element_line(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank()
+  ) +
+  ggtitle("ZH-16-11")
+
+ZH1611_XRF_pobj <-
+  ggplot(
+    xrf_data %>% filter(CoreID == "ZH-16-11", Element %in% !!elvec),
+    aes(x = Depth / 10, y = Area)
+  ) +
+  coord_flip() +
+  geom_line() +
+  facet_grid(~Element, scales = "free") +
+  scale_x_reverse("", limits = c(50, 0)) +
+  scale_y_continuous("Counts", labels = label_number_si(), breaks = pretty_breaks(n = 2)) +
+  # scale_color_manual(values = pal_eoi) +
+  theme(
+    axis.line = element_line(),
+    axis.line.y = element_line(color = "white"),
+    axis.title.y = element_text(color = "white"),
+    axis.text.y = element_text(color = "white"),
+    axis.ticks.y = element_line(color = "white"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    legend.key = element_blank(),
+    strip.background = element_blank(),
+    strip.placement = "inside"
+  ) +
+  annotate("rect",
+    xmin = 5, xmax = 9, ymin = -Inf, ymax = +Inf,
+    alpha = .4, fill = "#440154"
+  ) +
+  annotate("rect",
+    xmin = 9, xmax = 14, ymin = -Inf, ymax = +Inf,
+    alpha = .4, fill = "#2A788E"
+  )
+
+layout <- "
+ABBBBB
+CDDDDD
+"
+
+xrfplotscomposite <- AW1316_scanplotobj + AW1316_XRF_pobj + ZH1611_scanplotobj + ZH1611_XRF_pobj + plot_layout(design = layout)
+
+xrfplotscomposite
+
+ggsave(filename = "output/xrfplots_composite.pdf", plot = xrfplotscomposite, width = 174, height = 116, units = "mm", dpi = 300)
+```
+
+This Hg composite plot was used in the research article.
+
+```{r plot:hg_plots_export}
+hg_plots_patchwork <- hg_yields_pobj + hg_iso_pobj + plot_annotation(tag_levels = "A") + plot_layout(guides = "collect")
+hg_plots_patchwork
+
+ggsave(filename = "output/hgplots.png", plot = hg_plots_patchwork, width = 174, height = 85, units = "mm", dpi = 300)
+```
+
+## Tables
+
+Several tables that are necessary (e.g. for the heavy metal concentration map or as tables in the article) are exported in the next section.
+
+```{r table:tables_export}
+table_icp_oes_max_conc <- icp_oes_samples_meanconc %>%
+  group_by(CoreID, Element) %>%
+  slice(which.max(meanconc))
+
+table_xrf_max_conc_depth <- xrf_data %>%
+  filter(Element %in% elvec) %>%
+  group_by(CoreID, Element) %>%
+  slice(which.max(Area)) %>%
+  select(CoreID, Element, Depth) %>%
+  mutate(Depth = Depth / 10) %>%
+  pivot_wider(names_from = Element, values_from = Depth)
+
+table_hg_loss <- hg_afs_samples_conc %>%
+  select(CoreID, Top, Bottom, ExtractionType, MeanSampleConc) %>%
+  pivot_wider(names_from = ExtractionType, values_from = MeanSampleConc) %>%
+  drop_na() %>%
+  mutate(rel_loss = (1 - (F1 + F2) / T) * 100)
+
+table_xrfcal_max_estimates <- xrfcal_estimates %>%
+  group_by(CoreID, Element) %>%
+  slice(which.max(fit))
+
+tables_list <- list(table_icp_oes_max_conc, table_xrf_max_conc_depth, table_hg_loss, table_xrfcal_max_estimates)
+tables_list_names <- c("table_icp_oes_max_conc", "table_xrf_max_conc_depth", "table_hg_loss", "table_xrfcal_max_estimates")
+
+tables_list %>%
+  walk2(tables_list_names, ~ write_csv(.x, paste0("output/", .y, ".csv"), na = ""))
+```
+
+
+

@@ -14,6 +14,7 @@ output:
     df_print: paged
     toc: true
     toc_float: true
+    highlight: tango
 ---
 
 This document is an effort to make analyses that were carried out for the study "Tracking the legacy of early industrial activity in sediments of Lake Zurich, Switzerland: Using a novel multi-proxy approach to find the source of extensive heavy metal pollution" (to be published) reproducible.
@@ -410,7 +411,7 @@ hg_afs_calibrations %>%
   select(Cal, "R Squared" = r.squared, "p value" = p.value, N = nobs)
 ```
 
-A soil standard (NIST 2711a "Montana II") with a specified Hg concentration (7.41 ± 0.18 μg/g, expanded uncertainty denotes c. 95% confidence interval) was used to ensure digestion and machine performance. The standard digested in the first round (no replicates made) has an estimated concentration of 8.59 μg/g, which is outside of the specified concentration.
+A soil standard (NIST 2711a "Montana II") with a specified Hg concentration (7.41 ± 0.18 μg/g, expanded uncertainty denotes c. 95% confidence interval) was used to ensure digestion and machine performance. The standard digested in the first round (no replicates made) has an estimated concentration of 8.59 μg/g, which is outside of the specified concentration. For the second and third measurements, replicates and repeats were made (n = 4 replicates).
 
 ```{r table:hg_afs_nist_all}
 hg_afs_samples %>%
@@ -433,7 +434,7 @@ The mean of all replicates of the standard is `r as.numeric(hg_afs_nist_mean[1])
 ```{r data:hg_afs_samples_conc}
 hg_afs_samples_conc <- hg_afs_samples_conc_wrep %>%
   group_by(CoreID, Top, Bottom, ExtractionType) %>%
-  summarise(MeanSampleConc = mean(SampleConc), SDSampleConc = sd(SampleConc), N = n(), relsd = SDSampleConc / MeanSampleConc * 100, SEM = SDSampleConc / sqrt(N)) %>%
+  summarise(MeanSampleConc = mean(SampleConc), SDSampleConc = sd(SampleConc), N = n(), relsd = SDSampleConc / MeanSampleConc * 100, SEM = SDSampleConc / sqrt(N), ExpandedUc = SEM * 1.96) %>%
   arrange(CoreID, Top, ExtractionType)
 ```
 
@@ -562,8 +563,9 @@ hg_isotope_sample <- hg_isotope_referenced %>%
     ),
     Run = case_when( # Repairing bad naming
       str_detect(Name, "Run 2") ~ 2,
-      str_detect(Name, "Rerun") ~ 2,
+      str_detect(Name, "Run 3") ~ 3,
       str_detect(Name, "2nd Rerun") ~ 3,
+      str_detect(Name, "Rerun") ~ 2,
       TRUE ~ 1
     ),
     Extraction = case_when(
@@ -580,7 +582,7 @@ hg_isotope_sample <- hg_isotope_referenced %>%
   ) %>%
   select(Key, Name, CoreID, Extraction, Run, Type, Datetime, Parameter, ReferencedEstimate) %>%
   pivot_wider(names_from = "Parameter", values_from = "ReferencedEstimate", names_prefix = "d") %>%
-  mutate(D199 = `d199/198` - (`d202/198` * 0.252), D200 = `d200/198` - (`d202/198` * 0.5024), D201 = `d201/198` - (`d202/198` * 0.752), D204 = `d204/198` - (`d202/198` * 1.493), `D199/D201` = D199 / D201) # To calculate these Delta values, we need to use empirical scaling factors (see referenced papers for explanation).
+  mutate(D199 = `d199/198` - (`d202/198` * 0.252), D200 = `d200/198` - (`d202/198` * 0.5024), D201 = `d201/198` - (`d202/198` * 0.752), D204 = `d204/198` - (`d202/198` * 1.493), `D199/D201` = D199 / D201) # To calculate these Delta values, we need to use scaling factors (see referenced papers for explanation).
 
 hg_isotope_uncertainty <- hg_isotope_sample %>%
   pivot_longer(`d202/198`:`D199/D201`, names_to = "Parameter", values_to = "ReferencedEstimate") %>%
@@ -1376,18 +1378,24 @@ table_xrf_max_conc_depth <- xrf_data %>%
   mutate(Depth = Depth / 10) %>%
   pivot_wider(names_from = Element, values_from = Depth)
 
-table_hg_loss <- hg_afs_samples_conc %>%
+table_hg_recovery <- hg_afs_samples_conc %>%
   select(CoreID, Top, Bottom, ExtractionType, MeanSampleConc) %>%
   pivot_wider(names_from = ExtractionType, values_from = MeanSampleConc) %>%
   drop_na() %>%
-  mutate(rel_loss = (1 - (F1 + F2) / T) * 100)
+  mutate(rel_recovery = ((F1 + F2) / T) * 100)
+
+table_hg_isotopes_si <- hg_isotope_sample %>% 
+  filter(Type == "Sample") %>% 
+  select(CoreID, Name, Extraction, Run, `d202/198`, D199, D200, D201, D204) %>% 
+  mutate(`d202/198` = round(`d202/198`, 1), D199 = round(D199, 2), D200 = round(D200, 1), D201 = round(D201, 2), D204 = round(D204, 2)) %>% 
+  arrange(Name, Extraction)
 
 table_xrfcal_max_estimates <- xrfcal_estimates %>%
   group_by(CoreID, Element) %>%
   slice(which.max(fit))
 
-tables_list <- list(table_icp_oes_max_conc, table_xrf_max_conc_depth, table_hg_loss, table_xrfcal_max_estimates)
-tables_list_names <- c("table_icp_oes_max_conc", "table_xrf_max_conc_depth", "table_hg_loss", "table_xrfcal_max_estimates")
+tables_list <- list(table_icp_oes_max_conc, table_xrf_max_conc_depth, table_hg_recovery, table_xrfcal_max_estimates, table_hg_isotopes_si)
+tables_list_names <- c("table_icp_oes_max_conc", "table_xrf_max_conc_depth", "table_hg_recovery", "table_xrfcal_max_estimates", "table_hg_isotopes_si")
 
 tables_list %>%
   walk2(tables_list_names, ~ write_csv(.x, paste0("output/", .y, ".csv"), na = ""))

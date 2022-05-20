@@ -17,9 +17,9 @@ output:
     highlight: tango
 ---
 
-This document is an effort to make analyses that were carried out for the study "Tracking the legacy of early industrial activity in sediments of Lake Zurich, Switzerland: Using a novel multi-proxy approach to find the source of extensive heavy metal pollution" (to be published) reproducible.
+This document is an effort to make analyses that were carried out for the study "Tracking the legacy of early industrial activity in sediments of Lake Zurich, Switzerland: Using a novel multi-proxy approach to find the source of extensive metal contamination" reproducible.
 
-This document reflects the data analyses used for the accepted version of the research article, published at PUBLISHER on ACCEPTANCE DATE with the identifier:
+This document reflects the data analyses used for the accepted version of the research article, published at ESPR (Environmental Science and Pollution Research) on ACCEPTANCE DATE with the identifier:
 
 The identifier of this dataset and code is:
 
@@ -33,7 +33,6 @@ library(lubridate)
 library(ggfortify)
 library(broom)
 library(jpeg)
-library(renv)
 library(scales)
 library(ggh4x)
 library(viridis)
@@ -41,7 +40,8 @@ library(pander)
 library(corrplot)
 library(patchwork)
 library(grid)
-library(tidypredict)
+library(modelr)
+library(slider)
 
 source("R/avaatech_xrf_corescanner.R", local = knitr::knit_global())
 ```
@@ -363,6 +363,9 @@ tc_data <-
 # Information is stored in the first column and it needs to be extracted in multiple steps. Because of that, the function parse_avaatech_csv_file checks the files for validity and parses the contained information. This is looped with purr::map_dfr(). If a file fails validation or triggers an error, it is skipped.
 avaa_winaxil_csv_files <-
   dir("data/raw/xrf_cs", pattern = ".csv", full.names = TRUE)
+avaa_winaxil_highres_csv_files <-
+  dir("data/raw/xrf_cs/highres", pattern = ".csv", full.names = TRUE)
+
 xrf_data <-
   map_dfr(
     avaa_winaxil_csv_files,
@@ -372,6 +375,25 @@ xrf_data <-
       quiet = FALSE
     )
   )
+
+xrf_data_highres_raw <-
+  map_dfr(
+    avaa_winaxil_highres_csv_files,
+    possibly(
+      parse_avaatech_winaxil_csv,
+      otherwise = NULL,
+      quiet = FALSE
+    )
+  )
+
+xrf_data_highres_cleaned <- xrf_data_highres_raw %>%
+  group_by(Element, Voltage) %>% # apply to every Element and Voltage
+  summarise(totalcounts = sum(Area)) %>% # total counts per group
+  arrange(Element, desc(totalcounts)) %>%
+  top_n(1, totalcounts) %>% # get most counts per Element
+  select(Element, Voltage) %>%
+  left_join(xrf_data_highres_raw, by = c("Element", "Voltage"))
+
 ```
 
 # Hg-CV-AFS Measurements
@@ -553,7 +575,7 @@ hg_isotope_referenced <- hg_isotope_tidy %>%
 
 # Filtering data from my session and only some of the many different parameters that we are interested in.
 hg_isotope_sample <- hg_isotope_referenced %>%
-  filter(Type %in% c("Sample", "Fluka"), Key > 121, Parameter %in% c("202/198", "201/198", "200/198", "199/198", "204/198", "198/196"), Correction == "corr") %>%
+  filter(Type %in% c("Sample", "Fluka"), Parameter %in% c("202/198", "201/198", "200/198", "199/198", "204/198", "198/196"), Correction == "corr") %>%
   mutate(
     CoreID = case_when(
       str_detect(Name, "A16") ~ "AW-13-16",
@@ -582,7 +604,8 @@ hg_isotope_sample <- hg_isotope_referenced %>%
   ) %>%
   select(Key, Name, CoreID, Extraction, Run, Type, Datetime, Parameter, ReferencedEstimate) %>%
   pivot_wider(names_from = "Parameter", values_from = "ReferencedEstimate", names_prefix = "d") %>%
-  mutate(D199 = `d199/198` - (`d202/198` * 0.252), D200 = `d200/198` - (`d202/198` * 0.5024), D201 = `d201/198` - (`d202/198` * 0.752), D204 = `d204/198` - (`d202/198` * 1.493), `D199/D201` = D199 / D201) # To calculate these Delta values, we need to use scaling factors (see referenced papers for explanation).
+  mutate(D199 = `d199/198` - (`d202/198` * 0.252), D200 = `d200/198` - (`d202/198` * 0.5024), D201 = `d201/198` - (`d202/198` * 0.752), D204 = `d204/198` - (`d202/198` * 1.493), `D199/D201` = D199 / D201) %>% 
+  filter(!is.na(Name))
 
 hg_isotope_uncertainty <- hg_isotope_sample %>%
   pivot_longer(`d202/198`:`D199/D201`, names_to = "Parameter", values_to = "ReferencedEstimate") %>%
@@ -1116,6 +1139,16 @@ ggplot(xrf_data %>% filter(Element %in% elvec), aes(x = Depth, y = Area, colour 
   facet_grid(~CoreID, scales = "free") +
   theme_linedraw()
 ```
+```{r}
+xrf_data_highres_avg <- xrf_data_highres_cleaned %>% 
+  mutate(CoreID = str_replace(CoreID, "_1mm", "")) %>% 
+  filter(Element %in% elvec) %>% 
+  select(CoreID, Voltage, Depth, Element, Area) %>% 
+  group_by(CoreID, Element, Voltage) %>% 
+  mutate(Area = slide_dbl(Area, mean, .before = 0, .after = 5)) %>% 
+  filter(Depth %% 5 == 0) %>% 
+  ungroup()
+```
 
 
 # XRF/ICP-OES calibration
@@ -1130,19 +1163,24 @@ xrf_data_zh1610 <- xrf_data %>%
   mutate(Depth = Depth / 10, Source = "XRF") %>%
   select(Source, CoreID, Depth, Element, Estimate = Area)
 
+xrf_data_highres_zh1610 <- xrf_data_highres_avg %>% 
+  filter(CoreID == "ZH-16-10", Element %in% elvec) %>%
+  mutate(Depth = Depth / 10, Source = "XRF High-Res") %>%
+  select(Source, CoreID, Depth, Element, Estimate = Area)
+
 icp_oes_data_zh1610 <- icp_oes_samples_meanconc %>%
   ungroup() %>%
   filter(CoreID == "ZH-16-10", Element %in% elvec) %>%
-  mutate(Source = "ICP-OES", Depth = Top) %>%
+  mutate(Source = "ICP-OES", Depth = Bottom) %>%
   select(Source, CoreID, Depth, Element, Estimate = meanconc)
 
 hg_afs_data_zh1610 <- hg_afs_samples_conc %>%
   ungroup() %>%
   filter(ExtractionType == "T", CoreID == "ZH-16-10") %>%
-  mutate(Source = "Hg-AFS", Element = "Hg", Depth = Top) %>%
+  mutate(Source = "Hg-AFS", Element = "Hg", Depth = Bottom) %>%
   select(Source, CoreID, Depth, Element, Estimate = MeanSampleConc)
 
-heavy_metal_data_zh1610 <- bind_rows(xrf_data_zh1610, icp_oes_data_zh1610, hg_afs_data_zh1610) %>%
+heavy_metal_data_zh1610 <- bind_rows(xrf_data_zh1610, icp_oes_data_zh1610, hg_afs_data_zh1610, xrf_data_highres_zh1610) %>%
   group_by(Source, Element) %>%
   mutate(RescaledEstimate = rescale(Estimate))
 ```
@@ -1152,14 +1190,15 @@ ggplot(NULL, aes(x = Depth, y = RescaledEstimate, colour = Source)) +
   scale_x_reverse("Depth [cm]") +
   scale_y_continuous(breaks = NULL) +
   coord_flip() +
-  geom_line(data = heavy_metal_data_zh1610 %>% filter(Source == "XRF")) +
-  geom_point(data = heavy_metal_data_zh1610 %>% filter(Source != "XRF")) +
+  geom_line(data = heavy_metal_data_zh1610 %>% filter(Source == "XRF HR Avg"), alpha = 0.3) +
+  geom_line(data = heavy_metal_data_zh1610 %>% filter(Source == "XRF"), alpha = 0.3) +
+  geom_point(data = heavy_metal_data_zh1610 %>% filter(Source %in% c("ICP-OES", "Hg-AFS"))) +
   facet_grid(~Element, scales = "free") +
   theme_linedraw()
 ```
 
 ```{r data:xrfcal_lm}
-xrfcal_combined_data_zh1610 <- xrf_data_zh1610 %>%
+xrfcal_combined_data_zh1610 <- xrf_data_highres_zh1610 %>%
   rename(Counts = Estimate) %>%
   full_join(
     (bind_rows(icp_oes_data_zh1610, hg_afs_data_zh1610) %>%
@@ -1196,24 +1235,30 @@ xrfcal_estimates <- xrf_data %>%
   mutate(Depth = Depth / 10) %>%
   select(CoreID, Depth, Element, Counts = Area) %>%
   filter(Element %in% elvec) %>%
+  arrange(CoreID, Element, Depth) %>% 
   left_join(xrfcal_linearmodel %>% select(-CoreID), by = "Element") %>%
-  tidypredict_to_column(.$model[[1]], add_interval = TRUE) %>%
-  select(CoreID, Element, Depth, fit, upper, lower) %>%
-  filter(fit >= 0)
+  group_by(Element) %>% 
+  do(add_predictions(., first(.$model))) %>% 
+  select(CoreID, Element, Depth, pred) %>%
+  filter(pred >= 0)
 ```
 
-We can use the estimated concentrations as a very rough idea how much pollution to expect in cores nearer and further away from the shore, like in AW-13-16.
+We can use the estimated concentrations as a very rough idea how much pollution to expect in cores nearer and further away from the shore. If we check the predicted concentrations with the actual concentrations in ZH-16-10 (dots), we see that the range of the concentrations is the same.
 
 ```{r plot:xrfcal_estimates}
-ggplot(xrfcal_estimates %>% filter(CoreID == "AW-13-16"), aes(x = Depth, y = fit)) +
+
+xrfcal_zh1610 <- xrfcal_estimates %>% filter(CoreID == "ZH-16-10")
+
+ggplot(NULL, aes(x = Depth, y = pred)) +
   scale_x_reverse("Depth [cm]") +
-  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2, fill = "blue") +
+  geom_line(data = xrfcal_zh1610) +
+  geom_point(data = icp_oes_data_zh1610, aes(y = Estimate)) +
+  geom_point(data = hg_afs_data_zh1610, aes(y = Estimate)) +
   scale_y_continuous("Estimated Concentration [mg/kg]", breaks = pretty_breaks(n = 2), labels = label_number_si()) +
   coord_flip() +
-  geom_line() +
   facet_grid(~Element, scales = "free") +
   theme_linedraw() +
-  ggtitle("AW-13-16")
+  ggtitle("ZH-16-10")
 ```
 
 # Outputs
@@ -1387,12 +1432,16 @@ table_hg_recovery <- hg_afs_samples_conc %>%
 table_hg_isotopes_si <- hg_isotope_sample %>% 
   filter(Type == "Sample") %>% 
   select(CoreID, Name, Extraction, Run, `d202/198`, D199, D200, D201, D204) %>% 
-  mutate(`d202/198` = round(`d202/198`, 1), D199 = round(D199, 2), D200 = round(D200, 1), D201 = round(D201, 2), D204 = round(D204, 2)) %>% 
+  mutate(`d202/198` = sprintf("%.2f", round(`d202/198`, 2)+0), D199 = sprintf("%.2f", round(D199, 2)+0), D200 = sprintf("%.2f", round(D200, 2)+0), D201 = sprintf("%.2f", round(D201, 2)+0), D204 = sprintf("%.2f", round(D204, 2)+0)) %>% 
   arrange(Name, Extraction)
 
 table_xrfcal_max_estimates <- xrfcal_estimates %>%
+  select(CoreID, Element, pred) %>% 
+  mutate(pred = round(pred, 0)) %>% 
   group_by(CoreID, Element) %>%
-  slice(which.max(fit))
+  slice(which.max(pred)) %>% 
+  pivot_wider(names_from = "Element", values_from = "pred")
+  
 
 tables_list <- list(table_icp_oes_max_conc, table_xrf_max_conc_depth, table_hg_recovery, table_xrfcal_max_estimates, table_hg_isotopes_si)
 tables_list_names <- c("table_icp_oes_max_conc", "table_xrf_max_conc_depth", "table_hg_recovery", "table_xrfcal_max_estimates", "table_hg_isotopes_si")
@@ -1400,6 +1449,4 @@ tables_list_names <- c("table_icp_oes_max_conc", "table_xrf_max_conc_depth", "ta
 tables_list %>%
   walk2(tables_list_names, ~ write_csv(.x, paste0("output/", .y, ".csv"), na = ""))
 ```
-
-
 

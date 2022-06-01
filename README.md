@@ -1,7 +1,9 @@
 # Richterswil pollution study repo
 
 ## Motivation
-This repository provides code and data that are necessary to reproduce results found in the study "Tracking the legacy of early industrial activity in sediments of Lake Zurich, Switzerland: Using a novel multi-proxy approach to find the source of extensive heavy metal pollution" (currently under consideration by [Environmental Science and Pollution Research (ESPR)](https://www.springer.com/journal/11356)) with the DOI DOILINK.
+This repository provides code and data that are necessary to reproduce results found in the study "Tracking the legacy of early industrial activity in sediments of Lake Zurich, Switzerland: Using a novel multi-proxy approach to find the source of extensive metal contamination", accepted on 31 May 2022 by [Environmental Science and Pollution Research (ESPR)](https://www.springer.com/journal/11356)) with the DOI:
+
+DOILINK.
 
 Additionally, a full dataset including linescans/photographs of all sediment cores can be found at Eawag's ERIC Public Archive:
 
@@ -49,13 +51,13 @@ Contains processed linescans/core photographs of sediment cores necessary to pro
 #### `raw` subfolder
 Contains data that was used as is without data transformation, i.e. directly in the format that was provided with the measurements. In some case, information was added, to facilitate further processing:
 
-* `coordinates` contains the coordinates of all sediment cores used in this project. The file `20161221_zh16_coords.csv` contains a compilation of original GPS data as recorded with the Fugawi Explorer programme.
-* `hg_afs` contains Hg concentrations measured by CV-Hg-AFS from two dates (22 March 2017 and 18 May 2017) for measurements of a total digestion of samples from ZH-16-10, and for measurements of sequentials extractions and total digestion of sample from AW-13-16, ZH-16-10 and ZH-16-11 respectively. These files were amended with additional columns containing metadata (e.g. extraction, run, digestion).
-* `hg_isotope` contains the Hg isotope measurements made in Vienna on a Nu instruments MC-ICP-MS (`201705_hgiso_richterswil.csv`) in May 2017. This file was not modified.
-* `icp_oes` contains the ICP-OES measurements made at Eawag (`20170310_icp_oes_richterswil.csv`) on 10 March 2017 from samples of two digestion runs. The file contains additional columns with metadata regarding digestion run, sample name, sediment depth etc. The files `icp_oes_digestion1_weights_richterswil.txt` and `icp_oes_digestion2_weights_richterswil.txt` contain the weights of the sediment samples used for the aqua digestions used in the first and second digestion run respectively.
+* `coordinates` contains the coordinates of all sediment cores used in this project. The file `20161221_zh16_coords.csv` contains a compilation of original GPS data as recorded with the Fugawi Explorer programme. The coordinates are given in CH1903 and WGS84 coordinates.
+* `hg_afs` contains Hg concentrations measured by CV-Hg-AFS from two dates (22 March 2017 and 18 May 2017) for measurements of a total digestion of samples from ZH-16-10, and for measurements of sequentials extractions and total digestion of sample from AW-13-16, ZH-16-10 and ZH-16-11 respectively. These files were amended with additional columns containing metadata (e.g. extraction, run, digestion). Concentrations in the raw files are given in ng/ml (ppb) and refer to the diluted sample solutions.
+* `hg_isotope` contains the Hg isotope measurements made in Vienna on a Nu instruments MC-ICP-MS (`201705_hgiso_richterswil.csv`) in May 2017. This file was not modified. Values are given as ratios or voltages.
+* `icp_oes` contains the ICP-OES measurements made at Eawag (`20170310_icp_oes_richterswil.csv`) on 10 March 2017 from samples of two digestion runs. The file contains additional columns with metadata regarding digestion run, sample name, sediment depth etc. The files `icp_oes_digestion1_weights_richterswil.txt` and `icp_oes_digestion2_weights_richterswil.txt` contain the weights of the sediment samples used for the aqua digestions used in the first and second digestion run respectively. The values given in the icp-oes files are given as counts from optical emission.
 * `radiodating` contains the files `gammadating_AW1316_activities_richterswil.csv`, `gammadating_AW1316_name_lookup_richterswil.csv`, `gammadating_ZH1611_activities_richterswil.csv`, `gammadating_ZH1611_name_lookup_richterswil.csv`, `pu_dating_AW1316_richterswil.csv` which contain measured activity in [Bq/kg] and the respective uncertainty given as 2σ (1σ for Pu dating) on one hand and the corresponding sample name/depth lookup tables on the other hand. Tables were simplified but the content was not altered.
-* `tc_tic` contains the original TIC (total inorganic carbon) measurements (`20170531_tic_richterswil.txt`) as exported from the Shimadzu SSM 5000A analyser, while the TC (total carbon) measurements were printed by a LECO CHNS 932 automatic analyser and digitalised manually afterwards (TC FILENAME).
-* `xrf_cs` contains the Avaatech XRF-Corescanner data as produced by WinAXIL Batch and converted to csv-files. The following modifications were done in Microsoft Excel:
+* `tc_tic` contains the original TIC (total inorganic carbon, in % w/w Carbonate) measurements (`20170531_tic_richterswil.txt`) as exported from the Shimadzu SSM 5000A analyser, while the TC (total carbon, in % w/w) measurements were printed by a LECO CHNS 932 automatic analyser and digitalised manually afterwards (TC FILENAME).
+* `xrf_cs` contains the Avaatech XRF-Corescanner data (XRF counts/fitted areas) as produced by WinAXIL Batch and converted to csv-files. The following modifications were done in Microsoft Excel:
   * Ca,K,Ba columns were dropped from 10 kVb sheets (duplicates), because higher Chi-Square mean values than at 30 kV.
   * Dashed "-" were replaced with "_"
 
@@ -71,7 +73,7 @@ The `renv` folder contains different dynamically created files and directories i
 ## Missing data
 The following data are not included in the repository:
 
-* Linescan/core photograph originals: The linescans for this project are around 50 MB per file (TIFF) and are too large to be included in a git repository (and the use of git Large File Storage LFS has some drawbacks, such as that LFS files cannot be included in github Pages.
+* Linescan/core photograph originals: The linescans for this project are around 50 MB per file (TIFF) and are too large to be included in a git repository (and the use of git Large File Storage LFS has some drawbacks, such as that LFS files cannot be included in github Pages. However, since the complete linescans could be relevant for further research, they are included as an additional resource in the data repository.
 * Data from the Geotek Multisensory corelogger (MSCL) were not included, as they were recorded but not used for this study.
 * Thermo-desorption data was only available as figures and not used for this study, thus not included.
 * Adobe Illustrator files that were used to produce some of the composite figures are not included.

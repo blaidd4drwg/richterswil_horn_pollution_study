@@ -3,7 +3,7 @@
 ## Motivation
 This repository provides code and data that are necessary to reproduce results found in the study "Tracking the legacy of early industrial activity in sediments of Lake Zurich, Switzerland: Using a novel multi-proxy approach to find the source of extensive metal contamination", accepted on 31 May 2022 by [Environmental Science and Pollution Research (ESPR)](https://www.springer.com/journal/11356)) with the DOI:
 
-DOILINK.
+[![DOI:10.1007/s11356-022-21288-6](https://zenodo.org/badge/DOI/10.1007/s11356-022-21288-6.svg)](https://doi.org/10.1007/s11356-022-21288-6)
 
 Additionally, a full dataset including linescans/photographs of all sediment cores can be found at Eawag's ERIC Public Archive:
 

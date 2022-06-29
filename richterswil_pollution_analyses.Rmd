@@ -19,7 +19,9 @@ output:
 
 This document is an effort to make analyses that were carried out for the study "Tracking the legacy of early industrial activity in sediments of Lake Zurich, Switzerland: Using a novel multi-proxy approach to find the source of extensive metal contamination" reproducible.
 
-This document reflects the data analyses used for the accepted version of the research article, published at ESPR (Environmental Science and Pollution Research) on ACCEPTANCE DATE with the identifier:
+This document reflects the data analyses used for the accepted version of the research article, published at ESPR (Environmental Science and Pollution Research) on 29 June with the identifier:
+
+[![DOI:10.1007/s11356-022-21288-6](https://zenodo.org/badge/DOI/10.1007/s11356-022-21288-6.svg)](https://doi.org/10.1007/s11356-022-21288-6)
 
 The identifier of this dataset and code is:
 

@@ -9,6 +9,8 @@ Additionally, a full dataset including linescans/photographs of all sediment cor
 
 [![DOI:10.25678/0005Y5](https://zenodo.org/badge/DOI/10.25678/0005Y5.svg)](https://doi.org/10.25678/0005Y5)
 
+The documented analyses (rendered Rmarkdown) can be found [here](https://blaidd4drwg.github.io/richterswil_horn_pollution_study).
+
 ## General structure of the repository
 The general structure of the project repository is as shown below (only directories shown, `renv` subfolders hidden. The root directory contains the following files:
 
